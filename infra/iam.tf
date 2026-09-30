@@ -15,11 +15,21 @@ resource "aws_iam_group" "developers" {
 resource "aws_iam_user" "security_team" {
   for_each = toset(var.security_team_usernames)
   name     = each.key
+
+  tags = {
+    team       = "security-team"
+    managed_by = "terraform"
+  }
 }
 
 resource "aws_iam_user" "developers" {
   for_each = toset(var.developer_usernames)
   name     = each.key
+
+  tags = {
+    team       = "developers"
+    managed_by = "terraform"
+  }
 }
 
 resource "aws_iam_group_membership" "security_team" {
