@@ -48,18 +48,33 @@ resource "aws_iam_role_policy_attachment" "plan_read_only" {
 # ---------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "state_backend_access" {
+  # Scoped to the infra/ key prefix only — these are the CI roles, and
+  # bootstrap/terraform.tfstate must stay out of their reach the same way
+  # the OIDC provider and the roles themselves do. Bootstrap is applied
+  # manually with separate (admin) credentials, never through these roles.
   statement {
-    sid    = "StateBucketReadWrite"
+    sid    = "InfraStateObjectReadWrite"
     effect = "Allow"
     actions = [
       "s3:GetObject",
       "s3:PutObject",
-      "s3:ListBucket",
     ]
     resources = [
-      aws_s3_bucket.tfstate.arn,
-      "${aws_s3_bucket.tfstate.arn}/*",
+      "${aws_s3_bucket.tfstate.arn}/infra/*",
     ]
+  }
+
+  statement {
+    sid       = "ListInfraStatePrefixOnly"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.tfstate.arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "s3:prefix"
+      values   = ["infra/*"]
+    }
   }
 }
 
