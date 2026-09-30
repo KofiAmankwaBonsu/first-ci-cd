@@ -1,8 +1,11 @@
 locals {
   # Plan role: assumable from any branch/PR in the repo (PRs need plan too).
   github_oidc_sub_any_ref = "repo:${var.github_repo}:*"
-  # Apply role: assumable only when the workflow is running off main.
-  github_oidc_sub_main_ref = "repo:${var.github_repo}:ref:refs/heads/main"
+  # Apply role: the apply job declares `environment: production`, which
+  # makes GitHub swap the token's sub claim from the ref-based form to
+  # "repo:OWNER/REPO:environment:NAME" instead — so the trust condition has
+  # to match on the environment, not on refs/heads/main.
+  github_oidc_sub_production_env = "repo:${var.github_repo}:environment:production"
 }
 
 # ---------------------------------------------------------------------------
@@ -111,7 +114,7 @@ data "aws_iam_policy_document" "apply_trust" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = [local.github_oidc_sub_main_ref]
+      values   = [local.github_oidc_sub_production_env]
     }
   }
 }
