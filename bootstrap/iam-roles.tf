@@ -1,11 +1,22 @@
 locals {
+  github_repo_owner = split("/", var.github_repo)[0]
+  github_repo_name  = split("/", var.github_repo)[1]
+
+  # Repos created after 2026-07-15 default to GitHub's immutable OIDC
+  # subject format, which embeds numeric owner/repo IDs instead of just
+  # names: "repo:OWNER@OWNER-ID/REPO@REPO-ID:...". first-ci-cd was created
+  # after that cutoff, so both conditions below must use this form or
+  # AssumeRoleWithWebIdentity is denied regardless of everything else being
+  # correct. IDs came from `GET /repos/OWNER/REPO` (repo id, owner.id).
+  github_oidc_subject_prefix = "repo:${local.github_repo_owner}@${var.github_owner_id}/${local.github_repo_name}@${var.github_repo_id}"
+
   # Plan role: assumable from any branch/PR in the repo (PRs need plan too).
-  github_oidc_sub_any_ref = "repo:${var.github_repo}:*"
+  github_oidc_sub_any_ref = "${local.github_oidc_subject_prefix}:*"
   # Apply role: the apply job declares `environment: production`, which
   # makes GitHub swap the token's sub claim from the ref-based form to
-  # "repo:OWNER/REPO:environment:NAME" instead — so the trust condition has
-  # to match on the environment, not on refs/heads/main.
-  github_oidc_sub_production_env = "repo:${var.github_repo}:environment:production"
+  # "...:environment:NAME" instead — so the trust condition has to match on
+  # the environment, not on refs/heads/main.
+  github_oidc_sub_production_env = "${local.github_oidc_subject_prefix}:environment:production"
 }
 
 # ---------------------------------------------------------------------------
