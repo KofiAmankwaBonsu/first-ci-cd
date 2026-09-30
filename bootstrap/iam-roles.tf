@@ -67,11 +67,16 @@ data "aws_iam_policy_document" "state_backend_access" {
   # the OIDC provider and the roles themselves do. Bootstrap is applied
   # manually with separate (admin) credentials, never through these roles.
   statement {
-    sid    = "InfraStateObjectReadWrite"
+    # Includes DeleteObject: native S3 locking (use_lockfile) creates a
+    # <key>.tflock object per run and deletes it on unlock — both plan and
+    # apply need to release their own locks, or every subsequent run finds
+    # a stale lock and has to be cleared by hand.
+    sid    = "InfraStateObjectAccess"
     effect = "Allow"
     actions = [
       "s3:GetObject",
       "s3:PutObject",
+      "s3:DeleteObject",
     ]
     resources = [
       "${aws_s3_bucket.tfstate.arn}/infra/*",
