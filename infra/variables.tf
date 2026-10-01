@@ -19,5 +19,5 @@ variable "security_team_usernames" {
 variable "developer_usernames" {
   description = "IAM usernames to create in the developers group"
   type        = list(string)
-  default     = ["developer-1", "developer-2"]
+  default     = ["developer-1", "developer-2", "developer-3"]
 }
