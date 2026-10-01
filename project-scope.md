@@ -8,6 +8,24 @@ Set up a CI/CD pipeline that deploys infrastructure to AWS using Terraform, auth
 via OIDC (no long-lived AWS access keys stored anywhere), plus a Terraform-managed IAM
 users/groups setup to validate the OIDC trust configuration end-to-end.
 
+## Status (as of 2026-10-01)
+
+**Built and validated end-to-end.** A PR touching `infra/` triggers `plan` with a comment on the
+PR; merging to `main` triggers `apply`, gated behind a `production` GitHub Environment approval;
+both jobs authenticate via OIDC with zero stored AWS credentials. Confirmed by tagging the 4 test
+IAM users through the real PR → review → merge → approve → apply path and seeing the tags land in
+AWS.
+
+Concrete values, for reference:
+
+- AWS account `537124953623`, region `us-east-1`
+- Repo: `KofiAmankwaBonsu/first-ci-cd`
+- State bucket: `first-ci-cd-tfstate-537124953623` (native S3 locking, no DynamoDB — see below)
+- `gh-actions-plan` / `gh-actions-apply` IAM roles, created in `bootstrap/`
+
+Test IAM users/groups (step 8) are being kept intentionally for now rather than torn down —
+there's more to build on `infra/` next.
+
 ## Assumptions (confirm or override)
 
 These weren't specified, so the plan below picks a default. Flag any of these that are wrong:
@@ -54,7 +72,8 @@ Using your own admin AWS credentials (temporary, e.g. `aws sso login` or a sessi
 apply (`terraform init && terraform apply`, backend = `local`) a config that creates:
    - S3 bucket for remote state (versioning on, default encryption, block public access, bucket
      policy restricting access to your account/roles — state can contain secrets)
-   - DynamoDB table for state locking
+   - State locking via native S3 conditional writes (`use_lockfile = true` in the backend block,
+     Terraform ≥1.10) — no DynamoDB table needed
    - IAM OIDC identity provider for `token.actions.githubusercontent.com`
    - `gh-actions-plan` IAM role — trust policy scoped to `repo:<org>/<repo>:*` (any branch/PR),
      permissions = read-only / `terraform plan`-only (no create/update/delete)
@@ -93,15 +112,37 @@ users/groups actually appear in AWS. This is the real validation of the whole se
 Once OIDC is proven, either delete them (`terraform destroy` on just that piece) or document
 why they're staying — don't leave them around as an unexplained leftover.
 
-## Guardrails to include (not optional extras)
+## Lessons learned while building this
 
-- `terraform fmt -check` and `terraform validate` on every PR
-- A security/lint scanner (tfsec or checkov) on every PR
-- `prevent_destroy` lifecycle rule on anything stateful, once real infra shows up
-- State bucket encrypted, versioned, and not publicly accessible (already covered in step 2,
-  called out again because it's easy to regress later)
+Three non-obvious things broke `sts:AssumeRoleWithWebIdentity` after the trust policy looked
+correct on paper — worth knowing before touching OIDC trust policies again:
 
-## Success criteria
+1. **A job with `environment: <name>` changes the OIDC `sub` claim.** Instead of the ref-based
+   `repo:OWNER/REPO:ref:refs/heads/main`, GitHub issues `repo:OWNER/REPO:environment:<name>`. The
+   `apply` role's trust condition has to match the environment claim, not the branch ref, because
+   the apply job declares `environment: production`.
+2. **Repos created after 2026-07-15 default to GitHub's immutable OIDC subject format**, which
+   embeds numeric owner/repo IDs: `repo:OWNER@OWNER-ID/REPO@REPO-ID:...` instead of
+   `repo:OWNER/REPO:...`. `first-ci-cd` was created after that cutoff, so both trust policies had
+   to be rebuilt around the actual numeric IDs (fetched via `GET /repos/OWNER/REPO`).
+3. **Native S3 locking needs `s3:DeleteObject`, not just `Get`/`Put`.** `use_lockfile` writes a
+   `<key>.tflock` object and deletes it on unlock — the first successful apply left a stale lock
+   behind because the role could create the lock but not clear it, blocking the next run until
+   cleared by hand.
+
+Also: each CI role's S3 access is scoped to the `infra/` key prefix specifically, not the whole
+bucket — `bootstrap/terraform.tfstate` stays out of reach of both roles, closing the same kind of
+privilege-escalation gap called out above for the OIDC provider and the roles themselves.
+
+## Guardrails
+
+- `terraform fmt -check` and `terraform validate` on every PR — **done**, in the `plan` job
+- A security/lint scanner (tfsec or checkov) on every PR — **not yet added**
+- `prevent_destroy` lifecycle rule on anything stateful — in place on the state bucket itself;
+  revisit once `infra/` grows anything else stateful
+- State bucket encrypted, versioned, and not publicly accessible — **done**
+
+## Success criteria — all met
 
 - No long-lived AWS access keys exist anywhere (not in GitHub Secrets, not on a laptop) once
   bootstrap is complete.
