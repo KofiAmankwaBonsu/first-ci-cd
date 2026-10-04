@@ -169,11 +169,32 @@ data "aws_iam_policy_document" "apply_permissions" {
       "iam:DetachGroupPolicy",
       "iam:ListAttachedGroupPolicies",
       "iam:ListGroupsForUser",
+      "iam:CreateLoginProfile",
+      "iam:GetLoginProfile",
+      "iam:UpdateLoginProfile",
+      "iam:DeleteLoginProfile",
+      "iam:PutGroupPolicy",
+      "iam:GetGroupPolicy",
+      "iam:DeleteGroupPolicy",
+      "iam:ListGroupPolicies",
     ]
     resources = [
       "arn:aws:iam::${var.aws_account_id}:user/*",
       "arn:aws:iam::${var.aws_account_id}:group/*",
     ]
+  }
+
+  # Account password policy is account-wide — these two actions don't
+  # support resource-level scoping, only "*". Kept to exactly these two
+  # actions so this doesn't become a backdoor to anything else account-wide.
+  statement {
+    sid    = "ManageAccountPasswordPolicy"
+    effect = "Allow"
+    actions = [
+      "iam:GetAccountPasswordPolicy",
+      "iam:UpdateAccountPasswordPolicy",
+    ]
+    resources = ["*"]
   }
 
   # Close the privilege-escalation loop: the apply role can manage IAM users
