@@ -1,6 +1,0 @@
-aws_region        = "us-east-1"
-aws_account_id    = "537124953623"
-github_repo       = "KofiAmankwaBonsu/first-ci-cd"
-github_owner_id   = "185642937"
-github_repo_id    = "1394797431"
-state_bucket_name = "first-ci-cd-tfstate-537124953623"
